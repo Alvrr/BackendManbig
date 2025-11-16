@@ -1,0 +1,976 @@
+basePath: /
+definitions:
+  models.ItemProduk:
+    properties:
+      harga:
+        type: integer
+      id_produk:
+        type: string
+      jumlah:
+        type: integer
+      nama_produk:
+        type: string
+      subtotal:
+        type: integer
+    type: object
+  models.LoginInput:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  models.Pelanggan:
+    properties:
+      alamat:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      nama:
+        type: string
+      no_hp:
+        type: string
+    required:
+    - alamat
+    - email
+    - nama
+    - no_hp
+    type: object
+  models.Pembayaran:
+    properties:
+      id:
+        type: string
+      id_driver:
+        type: string
+      id_kasir:
+        type: string
+      id_pelanggan:
+        type: string
+      jenis_pengiriman:
+        type: string
+      nama_driver:
+        type: string
+      nama_kasir:
+        type: string
+      ongkir:
+        type: integer
+      produk:
+        items:
+          $ref: '#/definitions/models.ItemProduk'
+        type: array
+      status:
+        type: string
+      tanggal:
+        type: string
+      total_bayar:
+        type: integer
+    required:
+    - id_pelanggan
+    - produk
+    type: object
+  models.ProdukInput:
+    properties:
+      deskripsi:
+        example: Air mineral kemasan galon 19 liter
+        type: string
+      harga:
+        example: 20000
+        type: integer
+      kategori:
+        example: Minuman
+        type: string
+      nama_produk:
+        example: Galon Air Mineral
+        type: string
+      stok:
+        example: 100
+        type: integer
+    required:
+    - harga
+    - kategori
+    - nama_produk
+    - stok
+    type: object
+  models.ProdukSwagger:
+    properties:
+      created_at:
+        example: "2024-01-15T10:30:00Z"
+        type: string
+      deskripsi:
+        example: Air mineral kemasan galon 19 liter
+        type: string
+      harga:
+        example: 20000
+        type: integer
+      id:
+        example: "1"
+        type: string
+      kategori:
+        example: Minuman
+        type: string
+      nama_produk:
+        example: Galon Air Mineral
+        type: string
+      stok:
+        example: 100
+        type: integer
+    type: object
+  models.User:
+    properties:
+      alamat:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      nama:
+        type: string
+      no_hp:
+        type: string
+      password:
+        type: string
+      role:
+        type: string
+      status:
+        description: aktif/nonaktif
+        type: string
+    type: object
+  models.UserInput:
+    properties:
+      alamat:
+        type: string
+      email:
+        type: string
+      nama:
+        type: string
+      no_hp:
+        type: string
+      password:
+        type: string
+      role:
+        type: string
+      status:
+        description: aktif/nonaktif
+        type: string
+    required:
+    - nama
+    - email
+    - password
+    - role
+    - status
+    type: object
+host: backendmbg-production.up.railway.app
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: |-
+    API documentation untuk Backend GROSIR
+
+    **Sistem Login:**
+    - Admin: restu129@gmail.com / restu123
+    - Kasir: kasir129@gmail.com / 123456
+    - Driver: driver129@gmail.com / 123456
+
+    **Authentication:**
+    - Semua endpoint (kecuali login) memerlukan Bearer Token
+    - Token didapat dari endpoint /auth/login
+    - Format: Authorization: Bearer {token}
+
+    **Role Permissions:**
+    - Admin: Akses penuh ke semua fitur
+    - Kasir: CRUD produk, pelanggan, pembayaran, lihat riwayat
+    - Driver: Lihat pembayaran assigned, update status selesai, cetak surat jalan
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Backend MBG API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Login user dengan email dan password
+      parameters:
+      - description: Login credentials
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.LoginInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Login berhasil
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Email atau password salah
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Login user
+      tags:
+      - Authentication
+  /laporan/excel:
+    get:
+      description: Export semua data pembayaran ke file Excel
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: File Excel berhasil diexport
+          schema:
+            type: file
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Export laporan ke Excel
+      tags:
+      - Laporan
+  /pelanggan:
+    get:
+      description: Mengambil semua data pelanggan
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Pelanggan'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all customers
+      tags:
+      - Pelanggan
+    post:
+      consumes:
+      - application/json
+      description: Membuat pelanggan baru
+      parameters:
+      - description: Customer data
+        in: body
+        name: pelanggan
+        required: true
+        schema:
+          $ref: '#/definitions/models.Pelanggan'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Pelanggan berhasil ditambahkan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create customer
+      tags:
+      - Pelanggan
+  /pelanggan/{id}:
+    delete:
+      description: Hapus pelanggan berdasarkan ID
+      parameters:
+      - description: Customer ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Pelanggan berhasil dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete customer
+      tags:
+      - Pelanggan
+    get:
+      description: Mengambil data pelanggan berdasarkan ID
+      parameters:
+      - description: Customer ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Pelanggan'
+        "404":
+          description: Pelanggan tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get customer by ID
+      tags:
+      - Pelanggan
+    put:
+      consumes:
+      - application/json
+      description: Update data pelanggan berdasarkan ID
+      parameters:
+      - description: Customer ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Customer data
+        in: body
+        name: pelanggan
+        required: true
+        schema:
+          $ref: '#/definitions/models.Pelanggan'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Pelanggan berhasil diupdate
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update customer
+      tags:
+      - Pelanggan
+  /pembayaran:
+    get:
+      description: Mengambil semua data pembayaran berdasarkan role user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Pembayaran'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all payments
+      tags:
+      - Pembayaran
+    post:
+      consumes:
+      - application/json
+      description: Membuat pembayaran baru
+      parameters:
+      - description: Payment data
+        in: body
+        name: pembayaran
+        required: true
+        schema:
+          $ref: '#/definitions/models.Pembayaran'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Pembayaran berhasil dibuat
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create payment
+      tags:
+      - Pembayaran
+  /pembayaran/{id}:
+    get:
+      description: Mengambil data pembayaran berdasarkan ID
+      parameters:
+      - description: Payment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Pembayaran'
+        "404":
+          description: Data tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get payment by ID
+      tags:
+      - Pembayaran
+  /pembayaran/cetak/{id}:
+    get:
+      description: Cetak surat jalan untuk pengiriman
+      parameters:
+      - description: Payment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Surat jalan berhasil dicetak
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses ditolak
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Data tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Print delivery note
+      tags:
+      - Pembayaran
+  /pembayaran/selesaikan/{id}:
+    put:
+      description: Menyelesaikan pembayaran (ubah status menjadi selesai)
+      parameters:
+      - description: Payment ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Transaksi berhasil diselesaikan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Transaksi sudah selesai
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Akses ditolak
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Data tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Complete payment
+      tags:
+      - Pembayaran
+  /produk:
+    get:
+      description: Mengambil semua data produk
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ProdukSwagger'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all products
+      tags:
+      - Produk
+    post:
+      consumes:
+      - application/json
+      description: Membuat produk baru
+      parameters:
+      - description: Product data
+        in: body
+        name: produk
+        required: true
+        schema:
+          $ref: '#/definitions/models.ProdukInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Produk berhasil ditambahkan
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create product
+      tags:
+      - Produk
+  /produk/{id}:
+    delete:
+      description: Hapus produk berdasarkan ID
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Produk berhasil dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete product
+      tags:
+      - Produk
+    get:
+      description: Mengambil data produk berdasarkan ID
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ProdukSwagger'
+        "404":
+          description: Produk tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get product by ID
+      tags:
+      - Produk
+    put:
+      consumes:
+      - application/json
+      description: Update data produk berdasarkan ID
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Product data
+        in: body
+        name: produk
+        required: true
+        schema:
+          $ref: '#/definitions/models.ProdukInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Produk berhasil diupdate
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "422":
+          description: Validasi gagal
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update product
+      tags:
+      - Produk
+  /riwayat:
+    get:
+      description: Mengambil riwayat pembayaran berdasarkan role user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Pembayaran'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get payment history
+      tags:
+      - Riwayat
+  /users/karyawan:
+    get:
+      description: Mengambil semua data user/karyawan (admin only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all users
+      tags:
+      - Karyawan
+    post:
+      consumes:
+      - application/json
+      description: Menambah karyawan baru (admin only) - kasir atau driver
+      parameters:
+      - description: Data karyawan
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.UserInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Karyawan berhasil ditambah
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create new karyawan
+      tags:
+      - Karyawan
+  /users/karyawan/{id}:
+    delete:
+      description: Hapus karyawan berdasarkan ID (admin only)
+      parameters:
+      - description: ID karyawan
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Karyawan berhasil dihapus
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete karyawan
+      tags:
+      - Karyawan
+    get:
+      description: Mengambil data karyawan berdasarkan ID (admin only)
+      parameters:
+      - description: ID karyawan
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get karyawan by ID
+      tags:
+      - Karyawan
+    put:
+      consumes:
+      - application/json
+      description: Update data karyawan berdasarkan ID (admin only)
+      parameters:
+      - description: ID karyawan
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Data karyawan yang diupdate
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.UserInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Karyawan berhasil diupdate
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update karyawan
+      tags:
+      - Karyawan
+  /users/karyawan/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Update status karyawan menjadi aktif atau nonaktif (admin only)
+      parameters:
+      - description: ID karyawan
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Status karyawan
+        in: body
+        name: status
+        required: true
+        schema:
+          properties:
+            status:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Status karyawan berhasil diupdate
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Request tidak valid
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Karyawan tidak ditemukan
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update karyawan status
+      tags:
+      - Karyawan
+  /users/karyawan/active:
+    get:
+      description: Mengambil semua data karyawan aktif
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all active karyawan
+      tags:
+      - Karyawan
+schemes:
+- https
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

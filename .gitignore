@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# production
+dist/
+build/
+
+# misc
+.DS_Store
+.env
+.env.local
+.env.*.local
+.vscode/
+*.log
+
+# IDE/editor settings
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Tailwind cache
+.tailwind
