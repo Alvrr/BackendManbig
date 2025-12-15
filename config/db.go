@@ -25,6 +25,14 @@ func ConnectDB() {
 	mongoURI := os.Getenv("MONGO_URI")
 	dbName := os.Getenv("DB_NAME")
 
+	// Defaults for local development if env not set
+	if mongoURI == "" {
+		mongoURI = "mongodb://localhost:27017"
+	}
+	if dbName == "" {
+		dbName = "mbg"
+	}
+
 	fmt.Println("✅ MONGO_URI:", mongoURI)
 	fmt.Println("✅ DB_NAME:", dbName)
 

@@ -55,6 +55,12 @@ func main() {
 	// Load file .env (tidak fatal jika gagal, agar bisa jalan di Railway)
 	_ = godotenv.Load()
 
+	// Development-safe defaults if critical env vars are missing
+	if os.Getenv("JWT_SECRET") == "" {
+		os.Setenv("JWT_SECRET", "dev_secret_key_change_me")
+		log.Println("⚠️ JWT_SECRET tidak diset, menggunakan default untuk development")
+	}
+
 	// Koneksi ke MongoDB
 	config.ConnectDB()
 
@@ -87,10 +93,10 @@ func main() {
 	// Semua route (termasuk auth/login/register)
 	routes.SetupRoutes(app)
 
-	// Port server
+	// Port server (default ke 5000 agar konsisten dengan frontend & docs)
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "3000"
+		port = "5000"
 	}
 
 	log.Println("🚀 Server jalan di http://localhost:" + port)
