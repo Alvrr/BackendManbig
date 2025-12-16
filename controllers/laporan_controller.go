@@ -13,6 +13,7 @@ import (
 )
 
 // ExportLaporanExcel godoc
+//
 //	@Summary		Export laporan ke Excel
 //	@Description	Export semua data pembayaran ke file Excel
 //	@Tags			Laporan
@@ -35,9 +36,9 @@ func ExportLaporanExcel(c *fiber.Ctx) error {
 	sheet := "Laporan"
 	f.SetSheetName("Sheet1", sheet)
 
-	// Header
-	headers := []string{"ID Transaksi", "Nama Pembeli", "Nama Kasir", "Nama Driver", "Produk", "Qty", "Harga", "Subtotal", "Tanggal"}
-	columns := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I"}
+	// Header disesuaikan dengan skema pembayaran baru
+	headers := []string{"ID Pembayaran", "ID Transaksi", "Nama Kasir", "Metode", "Total Bayar", "Status", "Tanggal"}
+	columns := []string{"A", "B", "C", "D", "E", "F", "G"}
 
 	// ✅ Buat style header (bold + center + background)
 	headerStyle, _ := f.NewStyle(&excelize.Style{
@@ -68,32 +69,27 @@ func ExportLaporanExcel(c *fiber.Ctx) error {
 			continue
 		}
 
-		// Ambil nama pelanggan
-		var pelanggan models.Pelanggan
-		err := config.PelangganCollection.FindOne(ctx, bson.M{"_id": bayar.IDPelanggan}).Decode(&pelanggan)
-		if err != nil {
-			pelanggan.Nama = "Tidak ditemukan"
+		// Ambil nama kasir dari user collection
+		kasirNama := "Tidak ditemukan"
+		var kasir models.User
+		if err := config.UserCollection.FindOne(ctx, bson.M{"_id": bayar.KasirID}).Decode(&kasir); err == nil {
+			kasirNama = kasir.Nama
 		}
 
-		// Untuk setiap produk, buat baris sendiri
-		for _, item := range bayar.Produk {
-			values := []interface{}{
-				bayar.ID,
-				pelanggan.Nama,
-				bayar.NamaKasir,
-				bayar.NamaDriver,
-				item.NamaProduk,
-				item.Jumlah,
-				item.Harga,
-				item.Subtotal,
-				bayar.Tanggal,
-			}
-			for col, val := range values {
-				cell, _ := excelize.CoordinatesToCellName(col+1, row)
-				f.SetCellValue(sheet, cell, val)
-			}
-			row++
+		values := []interface{}{
+			bayar.ID,
+			bayar.TransaksiID,
+			kasirNama,
+			bayar.Metode,
+			bayar.TotalBayar,
+			bayar.Status,
+			bayar.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
+		for col, val := range values {
+			cell, _ := excelize.CoordinatesToCellName(col+1, row)
+			f.SetCellValue(sheet, cell, val)
+		}
+		row++
 	}
 
 	// Lebar kolom otomatis

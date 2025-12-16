@@ -3,11 +3,9 @@ package controllers
 import (
 	"backend/models"
 	"backend/repository"
-	"backend/utils"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // GetAllProduk godoc
@@ -77,16 +75,16 @@ func CreateProduk(c *fiber.Ctx) error {
 		})
 	}
 
-	// ✅ Tambahkan validasi
-	if err := utils.Validate.Struct(produk); err != nil {
+	// Basic validation from provided schema
+	if produk.NamaProduk == "" || produk.KategoriID == "" || produk.HargaJual <= 0 {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
 			"message": "Validasi gagal",
-			"error":   err.Error(),
+			"error":   "nama_produk, kategori_id, harga_jual wajib diisi",
 		})
 	}
 
 	// 🔢 Generate ID dan waktu
-	newID, err := repository.GenerateID("produkid")
+	newID, err := repository.GenerateID("produk")
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Gagal generate ID produk",
@@ -95,13 +93,18 @@ func CreateProduk(c *fiber.Ctx) error {
 	}
 
 	produk.ID = newID
-	produk.CreatedAt = primitive.NewDateTimeFromTime(time.Now())
+	produk.CreatedAt = time.Now()
 
 	result, err := repository.CreateProduk(produk)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		status := fiber.StatusInternalServerError
+		msg := err.Error()
+		if msg == "kategori tidak ditemukan" {
+			status = fiber.StatusUnprocessableEntity
+		}
+		return c.Status(status).JSON(fiber.Map{
 			"message": "Gagal menambahkan produk",
-			"error":   err.Error(),
+			"error":   msg,
 		})
 	}
 
@@ -137,10 +140,10 @@ func UpdateProduk(c *fiber.Ctx) error {
 	}
 
 	// ✅ Validasi input - pastikan field required tidak kosong
-	if produk.NamaProduk == "" || produk.Kategori == "" || produk.Harga <= 0 || produk.Stok < 0 {
+	if produk.NamaProduk == "" || produk.KategoriID == "" || produk.HargaJual <= 0 || produk.Stok < 0 {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
 			"message": "Validasi gagal",
-			"error":   "Nama produk, kategori, harga (>0), dan stok (>=0) wajib diisi",
+			"error":   "Nama produk, kategori_id, harga_jual (>0), dan stok (>=0) wajib diisi",
 		})
 	}
 

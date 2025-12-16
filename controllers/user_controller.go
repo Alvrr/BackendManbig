@@ -106,9 +106,9 @@ func CreateKaryawan(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Request tidak valid"})
 	}
 
-	// Validasi role hanya kasir dan driver yang bisa dibuat
-	if user.Role != "kasir" && user.Role != "driver" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Role harus kasir atau driver"})
+	// Validasi role yang bisa dibuat: kasir, gudang, driver
+	if user.Role != "kasir" && user.Role != "gudang" && user.Role != "driver" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Role harus kasir, gudang, atau driver"})
 	}
 
 	// Generate ID untuk user berdasarkan role
@@ -187,9 +187,9 @@ func RegisterKaryawan(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Request tidak valid"})
 	}
 
-	// Validasi role hanya kasir dan driver yang bisa dibuat
-	if user.Role != "kasir" && user.Role != "driver" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Role harus kasir atau driver"})
+	// Validasi role yang bisa dibuat: kasir, gudang, driver
+	if user.Role != "kasir" && user.Role != "gudang" && user.Role != "driver" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Role harus kasir, gudang, atau driver"})
 	}
 
 	// Generate ID untuk user berdasarkan role

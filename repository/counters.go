@@ -18,12 +18,19 @@ func InitializeCounters() error {
 	defer cancel()
 
 	counters := []map[string]interface{}{
-		{"_id": "admin", "prefix": "ADM", "sequence_value": 0},
-		{"_id": "kasir", "prefix": "KSR", "sequence_value": 0},
-		{"_id": "driver", "prefix": "DRV", "sequence_value": 0},
-		{"_id": "pelanggan", "prefix": "PLG", "sequence_value": 0},
-		{"_id": "produk", "prefix": "PRD", "sequence_value": 0},
-		{"_id": "pembayaran", "prefix": "PMB", "sequence_value": 0},
+		{"_id": "admin", "prefix": "ADM", "sequence_value": 1},
+		{"_id": "kasir", "prefix": "KSR", "sequence_value": 1},
+		{"_id": "driver", "prefix": "DRV", "sequence_value": 1},
+		{"_id": "pelanggan", "prefix": "PLG", "sequence_value": 2},
+		{"_id": "kategori", "prefix": "KTG", "sequence_value": 2},
+		{"_id": "produk", "prefix": "PRD", "sequence_value": 2},
+		{"_id": "transaksi", "prefix": "TRX", "sequence_value": 1},
+		{"_id": "pembayaran", "prefix": "BYR", "sequence_value": 1},
+		{"_id": "pengiriman", "prefix": "KRM", "sequence_value": 1},
+		{"_id": "stok", "prefix": "STK", "sequence_value": 2},
+		{"_id": "log", "prefix": "LOG", "sequence_value": 1},
+		// Tambahkan counter untuk role gudang agar pembuatan ID karyawan gudang berhasil
+		{"_id": "gudang", "prefix": "GDG", "sequence_value": 1},
 	}
 
 	for _, counter := range counters {
@@ -72,13 +79,15 @@ func GenerateUserID(role string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Mapping role ke _id counter (admin, kasir, driver)
+	// Mapping role ke _id counter (admin, kasir, gudang, driver)
 	counterID := ""
 	switch role {
 	case "admin":
 		counterID = "admin"
 	case "kasir":
 		counterID = "kasir"
+	case "gudang":
+		counterID = "gudang"
 	case "driver":
 		counterID = "driver"
 	default:

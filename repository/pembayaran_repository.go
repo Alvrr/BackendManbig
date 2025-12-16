@@ -8,10 +8,20 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func pembayaranCol() *mongo.Collection {
-	return config.PembayaranCollection
+func pembayaranCol() *mongo.Collection { return config.PembayaranCollection }
+
+func EnsurePembayaranIndexes() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := pembayaranCol().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "kasir_id", Value: 1}}},
+		{Keys: bson.D{{Key: "transaksi_id", Value: 1}}},
+		{Keys: bson.D{{Key: "created_at", Value: -1}}},
+	})
+	return err
 }
 
 // Ambil semua pembayaran (admin/kasir)
@@ -19,7 +29,8 @@ func GetAllPembayaran() ([]models.Pembayaran, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cursor, err := pembayaranCol().Find(ctx, bson.M{})
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
+	cursor, err := pembayaranCol().Find(ctx, bson.M{}, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +53,8 @@ func GetPembayaranFiltered(filter bson.M) ([]models.Pembayaran, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cursor, err := pembayaranCol().Find(ctx, filter)
+	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
+	cursor, err := pembayaranCol().Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +98,18 @@ func UpdatePembayaran(id string, p models.Pembayaran) (*mongo.UpdateResult, erro
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	update := bson.M{"$set": p}
-	return pembayaranCol().UpdateByID(ctx, id, update)
+	set := bson.M{}
+	if p.Metode != "" {
+		set["metode"] = p.Metode
+	}
+	if p.TotalBayar != 0 {
+		set["total_bayar"] = p.TotalBayar
+	}
+	if p.Status != "" {
+		set["status"] = p.Status
+	}
+	update := bson.M{"$set": set}
+	return pembayaranCol().UpdateOne(ctx, bson.M{"_id": id}, update)
 }
 
 // Hapus pembayaran

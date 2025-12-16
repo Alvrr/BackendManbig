@@ -19,10 +19,10 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Data tidak valid"})
 	}
 
-	// Validasi role wajib (admin/kasir/driver)
+	// Validasi role wajib (admin/kasir/gudang/driver)
 	role := strings.ToLower(input.Role)
-	if role != "admin" && role != "kasir" && role != "driver" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Role harus admin, kasir, atau driver"})
+	if role != "admin" && role != "kasir" && role != "gudang" && role != "driver" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Role harus admin, kasir, gudang, atau driver"})
 	}
 
 	// Generate ID otomatis dari counters.go (jangan ambil dari frontend)

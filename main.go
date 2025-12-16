@@ -71,6 +71,36 @@ func main() {
 		log.Println("✅ Counters berhasil diinisialisasi")
 	}
 
+	// Pastikan index kategori (unique nama)
+	if err := repository.EnsureKategoriIndexes(); err != nil {
+		log.Printf("⚠️ Gagal membuat index kategori: %v", err)
+	}
+
+	// Pastikan index produk
+	if err := repository.EnsureProdukIndexes(); err != nil {
+		log.Printf("⚠️ Gagal membuat index produk: %v", err)
+	}
+
+	// Pastikan index stok
+	if err := repository.EnsureStokIndexes(); err != nil {
+		log.Printf("⚠️ Gagal membuat index stok: %v", err)
+	}
+
+	// Pastikan index transaksi
+	if err := repository.EnsureTransaksiIndexes(); err != nil {
+		log.Printf("⚠️ Gagal membuat index transaksi: %v", err)
+	}
+
+	// Pastikan index pembayaran
+	if err := repository.EnsurePembayaranIndexes(); err != nil {
+		log.Printf("⚠️ Gagal membuat index pembayaran: %v", err)
+	}
+
+	// Pastikan index pengiriman
+	if err := repository.EnsurePengirimanIndexes(); err != nil {
+		log.Printf("⚠️ Gagal membuat index pengiriman: %v", err)
+	}
+
 	// Inisialisasi Fiber
 	app := fiber.New()
 

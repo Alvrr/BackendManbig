@@ -15,8 +15,10 @@ import (
 var (
 	DB                   *mongo.Database
 	ProdukCollection     *mongo.Collection
+	KategoriCollection   *mongo.Collection
 	PelangganCollection  *mongo.Collection
 	PembayaranCollection *mongo.Collection
+	PengirimanCollection *mongo.Collection
 	CounterCollection    *mongo.Collection
 	UserCollection       *mongo.Collection
 )
@@ -57,8 +59,10 @@ func ConnectDB() {
 
 	// Inisialisasi semua koleksi
 	ProdukCollection = DB.Collection("produk")
+	KategoriCollection = DB.Collection("kategori")
 	PelangganCollection = DB.Collection("pelanggan")
 	PembayaranCollection = DB.Collection("pembayaran")
+	PengirimanCollection = DB.Collection("pengiriman")
 	CounterCollection = DB.Collection("counters")
 	UserCollection = DB.Collection("user")
 
