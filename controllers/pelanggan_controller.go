@@ -9,6 +9,7 @@ import (
 )
 
 // GetAllPelanggan godoc
+//
 //	@Summary		Get all customers
 //	@Description	Mengambil semua data pelanggan
 //	@Tags			Pelanggan
@@ -29,6 +30,7 @@ func GetAllPelanggan(c *fiber.Ctx) error {
 }
 
 // GetPelangganByID godoc
+//
 //	@Summary		Get customer by ID
 //	@Description	Mengambil data pelanggan berdasarkan ID
 //	@Tags			Pelanggan
@@ -51,6 +53,7 @@ func GetPelangganByID(c *fiber.Ctx) error {
 }
 
 // CreatePelanggan godoc
+//
 //	@Summary		Create customer
 //	@Description	Membuat pelanggan baru
 //	@Tags			Pelanggan
@@ -80,7 +83,7 @@ func CreatePelanggan(c *fiber.Ctx) error {
 		})
 	}
 
-	newID, err := repository.GenerateID("pelangganid")
+	newID, err := repository.GenerateID("pelanggan")
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"message": "Gagal generate ID pelanggan",
@@ -105,6 +108,7 @@ func CreatePelanggan(c *fiber.Ctx) error {
 }
 
 // UpdatePelanggan godoc
+//
 //	@Summary		Update customer
 //	@Description	Update data pelanggan berdasarkan ID
 //	@Tags			Pelanggan
@@ -150,6 +154,7 @@ func UpdatePelanggan(c *fiber.Ctx) error {
 }
 
 // DeletePelanggan godoc
+//
 //	@Summary		Delete customer
 //	@Description	Hapus pelanggan berdasarkan ID
 //	@Tags			Pelanggan
