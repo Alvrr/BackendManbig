@@ -69,6 +69,24 @@ func CreateTransaksi(c *fiber.Ctx) error {
 	if _, err := repository.CreateTransaksi(&t); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal membuat transaksi"})
 	}
+	// Kurangi stok: buat mutasi keluar untuk setiap item transaksi
+	// Mutasi dibuat dengan user_id dari kasir pembuat transaksi
+	if len(t.Items) > 0 {
+		for _, it := range t.Items {
+			if it.ProdukID == "" || it.Jumlah <= 0 {
+				continue
+			}
+			m := &models.StokMutasi{
+				ProdukID:  it.ProdukID,
+				Jenis:     "keluar",
+				Jumlah:    it.Jumlah,
+				UserID:    t.KasirID,
+				CreatedAt: time.Now(),
+			}
+			// Abaikan error agar transaksi tetap sukses. Log di repository jika perlu.
+			_, _ = repository.CreateMutasi(m)
+		}
+	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Transaksi berhasil dibuat", "id": t.ID})
 }
 
