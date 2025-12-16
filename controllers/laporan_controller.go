@@ -3,8 +3,10 @@ package controllers
 import (
 	"backend/config"
 	"backend/models"
+	"backend/repository"
 	"bytes"
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -106,4 +108,38 @@ func ExportLaporanExcel(c *fiber.Ctx) error {
 	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	c.Set("Content-Disposition", "attachment;filename=laporan.xlsx")
 	return c.SendStream(&buf)
+}
+
+// GetBestSellers godoc
+//
+//	@Summary		Best sellers summary
+//	@Description	Ambil produk terlaris berdasarkan transaksi dalam N hari terakhir
+//	@Tags			Laporan
+//	@Security		BearerAuth
+//	@Produce		json
+//	@Param			days	query	int	false	"Jumlah hari ke belakang" default(7)
+//	@Success		200	{array}	map[string]interface{}
+//	@Router			/laporan/best-sellers [get]
+func GetBestSellers(c *fiber.Ctx) error {
+	daysStr := c.Query("days", "7")
+	days, err := strconv.Atoi(daysStr)
+	if err != nil || days <= 0 {
+		days = 7
+	}
+	end := time.Now()
+	start := end.AddDate(0, 0, -days)
+	list, err := repository.GetBestSellers(start, end, 10)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"message": "Gagal mengambil best sellers", "error": err.Error()})
+	}
+	// Format response simple array
+	resp := make([]map[string]interface{}, 0, len(list))
+	for _, it := range list {
+		resp = append(resp, map[string]interface{}{
+			"produk_id": it.ProdukID,
+			"nama":      it.Nama,
+			"jumlah":    it.Jumlah,
+		})
+	}
+	return c.JSON(resp)
 }

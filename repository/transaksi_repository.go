@@ -76,3 +76,51 @@ func DeleteTransaksi(id string) (*mongo.DeleteResult, error) {
 	defer cancel()
 	return transaksiCol().DeleteOne(ctx, bson.M{"_id": id})
 }
+
+// BestSellerItem represents aggregation result for best sellers
+type BestSellerItem struct {
+	ProdukID string `bson:"_id" json:"produk_id"`
+	Nama     string `bson:"nama" json:"nama"`
+	Jumlah   int    `bson:"jumlah" json:"jumlah"`
+}
+
+// GetBestSellers aggregates transaksi items within date range and returns top products
+func GetBestSellers(start, end time.Time, limit int) ([]BestSellerItem, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	matchStage := bson.D{{Key: "$match", Value: bson.M{"created_at": bson.M{"$gte": start, "$lte": end}}}}
+	unwindStage := bson.D{{Key: "$unwind", Value: "$items"}}
+	groupStage := bson.D{{Key: "$group", Value: bson.M{
+		"_id":    "$items.produk_id",
+		"jumlah": bson.M{"$sum": "$items.jumlah"},
+	}}}
+	sortStage := bson.D{{Key: "$sort", Value: bson.M{"jumlah": -1}}}
+	limitStage := bson.D{{Key: "$limit", Value: limit}}
+	lookupStage := bson.D{{Key: "$lookup", Value: bson.M{
+		"from":         "produk",
+		"localField":   "_id",
+		"foreignField": "_id",
+		"as":           "produk",
+	}}}
+	addFields := bson.D{{Key: "$addFields", Value: bson.M{
+		"nama": bson.M{"$ifNull": bson.A{bson.M{"$arrayElemAt": bson.A{"$produk.nama_produk", 0}}, "$_id"}},
+	}}}
+	projectStage := bson.D{{Key: "$project", Value: bson.M{"produk": 0}}}
+
+	pipeline := mongo.Pipeline{matchStage, unwindStage, groupStage, sortStage, limitStage, lookupStage, addFields, projectStage}
+	cur, err := transaksiCol().Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var list []BestSellerItem
+	for cur.Next(ctx) {
+		var it BestSellerItem
+		if err := cur.Decode(&it); err != nil {
+			return nil, err
+		}
+		list = append(list, it)
+	}
+	return list, nil
+}
