@@ -76,7 +76,14 @@ func CreateTransaksi(c *fiber.Ctx) error {
 			if it.ProdukID == "" || it.Jumlah <= 0 {
 				continue
 			}
+			// Generate ID unik untuk setiap mutasi agar tidak terjadi duplicate key (_id)
+			mutasiID, genErr := repository.GenerateID("stok")
+			if genErr != nil {
+				// Jika gagal generate ID, tetap coba insert tanpa _id (Mongo akan menolak duplikat jika kosong)
+				// Namun kita tetap lanjut agar transaksi tidak gagal seluruhnya
+			}
 			m := &models.StokMutasi{
+				ID:        mutasiID,
 				ProdukID:  it.ProdukID,
 				Jenis:     "keluar",
 				Jumlah:    it.Jumlah,
