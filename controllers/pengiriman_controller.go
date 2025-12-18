@@ -35,7 +35,48 @@ func GetPengirimanByID(c *fiber.Ctx) error {
 	if role == "driver" && data.DriverID != userID {
 		return c.Status(403).JSON(fiber.Map{"message": "Akses ditolak"})
 	}
-	return c.JSON(data)
+	// Enrich detail: ambil transaksi dan pelanggan terkait untuk keperluan tampilan detail
+	var trx *models.Transaksi
+	if data.TransaksiID != "" {
+		if t, err := repository.GetTransaksiByID(data.TransaksiID); err == nil {
+			trx = t
+		}
+	}
+	var pelangganNama string
+	var pelangganID string
+	var items []models.TransaksiItem
+	var totalToko float64
+	if trx != nil {
+		pelangganID = trx.PelangganID
+		if p, err := repository.GetPelangganByID(trx.PelangganID); err == nil && p != nil {
+			pelangganNama = p.Nama
+		}
+		items = trx.Items
+		if trx.TotalHarga > 0 {
+			totalToko = trx.TotalHarga
+		} else {
+			// hitung dari items jika total_harga belum terisi
+			var sum float64
+			for _, it := range trx.Items {
+				sum += float64(it.Jumlah) * it.Harga
+			}
+			totalToko = sum
+		}
+	}
+	return c.JSON(fiber.Map{
+		"id":           data.ID,
+		"transaksi_id": data.TransaksiID,
+		"driver_id":    data.DriverID,
+		"jenis":        data.Jenis,
+		"ongkir":       data.Ongkir,
+		"status":       data.Status,
+		"created_at":   data.CreatedAt,
+		// Enriched fields for detail dialog
+		"pelanggan_id":   pelangganID,
+		"pelanggan_nama": pelangganNama,
+		"total_toko":     totalToko, // total belanja tanpa ongkir
+		"items":          items,
+	})
 }
 
 // Create: admin/kasir set driver assignment
