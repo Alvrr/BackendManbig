@@ -1,48 +1,38 @@
 package controllers
 
 import (
+	"context"
+	"fmt"
+	"time"
+
 	"backend/config"
 	"backend/models"
-	"backend/repository"
-	"bytes"
-	"context"
-	"strconv"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/xuri/excelize/v2"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// ExportLaporanExcel godoc
-//
-//	@Summary		Export laporan ke Excel
-//	@Description	Export semua data pembayaran ke file Excel
-//	@Tags			Laporan
-//	@Security		BearerAuth
-//	@Produce		application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-//	@Success		200	{file}		binary					"File Excel berhasil diexport"
-//	@Failure		500	{object}	map[string]interface{}	"Internal Server Error"
-//	@Router			/laporan/excel [get]
-func ExportLaporanExcel(c *fiber.Ctx) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+type LaporanController struct {
+	DB *mongo.Database
+}
+
+func NewLaporanController() *LaporanController {
+	return &LaporanController{
+		DB: config.DB,
+	}
+}
+
+func (lc *LaporanController) ExportExcel(c *fiber.Ctx) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	cursor, err := config.PembayaranCollection.Find(ctx, bson.M{})
-	if err != nil {
-		return c.Status(500).SendString("Gagal mengambil data")
-	}
-	defer cursor.Close(ctx)
-
 	f := excelize.NewFile()
-	sheet := "Laporan"
-	f.SetSheetName("Sheet1", sheet)
 
-	// Header disesuaikan dengan skema pembayaran baru
-	headers := []string{"ID Pembayaran", "ID Transaksi", "Nama Kasir", "Metode", "Total Bayar", "Status", "Tanggal"}
-	columns := []string{"A", "B", "C", "D", "E", "F", "G"}
-
-	// ✅ Buat style header (bold + center + background)
+	// ===============================
+	// STYLE HEADER
+	// ===============================
 	headerStyle, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold: true,
@@ -50,96 +40,212 @@ func ExportLaporanExcel(c *fiber.Ctx) error {
 		Alignment: &excelize.Alignment{
 			Horizontal: "center",
 		},
-		Fill: excelize.Fill{
-			Type:    "pattern",
-			Color:   []string{"#f2f2f2"},
-			Pattern: 1,
-		},
 	})
 
-	for i, h := range headers {
-		cell := columns[i] + "1"
-		f.SetCellValue(sheet, cell, h)
-		f.SetCellStyle(sheet, cell, cell, headerStyle)
+	// ===============================
+	// SHEET 1 : DETAIL PRODUK
+	// ===============================
+	sheetDetail := "Detail Produk"
+	f.SetSheetName("Sheet1", sheetDetail)
+
+	headersDetail := []string{
+		"ID Transaksi",
+		"Tanggal",
+		"Pelanggan",
+		"Kasir",
+		"Driver",
+		"Jenis Pengiriman",
+		"Nama Produk",
+		"Jumlah",
+		"Harga",
+		"Subtotal",
+		"Ongkir",
+		"Status",
 	}
 
-	// Data
-	row := 2
-	for cursor.Next(ctx) {
-		var bayar models.Pembayaran
-		if err := cursor.Decode(&bayar); err != nil {
-			continue
-		}
+	for i, h := range headersDetail {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheetDetail, cell, h)
+		f.SetCellStyle(sheetDetail, cell, cell, headerStyle)
+	}
 
-		// Ambil nama kasir dari user collection
-		kasirNama := "Tidak ditemukan"
+	trxColl := lc.DB.Collection("transaksi")
+	userColl := lc.DB.Collection("user")
+	pelangganColl := lc.DB.Collection("pelanggan")
+	pengirimanColl := lc.DB.Collection("pengiriman")
+
+	cursor, err := trxColl.Find(ctx, bson.M{})
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	defer cursor.Close(ctx)
+
+	row := 2
+	var totalSubtotal float64
+	var totalOngkir float64
+	seenTrx := make(map[string]bool)
+	for cursor.Next(ctx) {
+		var trx models.Transaksi
+		cursor.Decode(&trx)
+
+		// kasir
 		var kasir models.User
-		if err := config.UserCollection.FindOne(ctx, bson.M{"_id": bayar.KasirID}).Decode(&kasir); err == nil {
-			kasirNama = kasir.Nama
+		_ = userColl.FindOne(ctx, bson.M{"_id": trx.KasirID}).Decode(&kasir)
+
+		// pelanggan
+		var pelanggan models.Pelanggan
+		_ = pelangganColl.FindOne(ctx, bson.M{"_id": trx.PelangganID}).Decode(&pelanggan)
+
+		// pengiriman + driver
+		var pengiriman models.Pengiriman
+		var driver models.User
+		_ = pengirimanColl.FindOne(ctx, bson.M{"transaksi_id": trx.ID}).Decode(&pengiriman)
+		_ = userColl.FindOne(ctx, bson.M{"_id": pengiriman.DriverID}).Decode(&driver)
+
+		for i, item := range trx.Items {
+			subtotal := float64(item.Jumlah) * item.Harga
+			// Akumulasi subtotal semua item
+			totalSubtotal += subtotal
+			// Akumulasi ongkir per transaksi (hanya sekali)
+			if !seenTrx[trx.ID] {
+				totalOngkir += pengiriman.Ongkir
+				seenTrx[trx.ID] = true
+			}
+
+			values := []interface{}{
+				trx.ID,
+				trx.CreatedAt.Format("02-01-2006 15:04"),
+				pelanggan.Nama,
+				kasir.Nama,
+				driver.Nama,
+				pengiriman.Jenis,
+				item.NamaProduk,
+				item.Jumlah,
+				item.Harga,
+				subtotal,
+				// Tampilkan ongkir hanya di baris pertama item untuk transaksi ini
+				func() interface{} {
+					if i == 0 {
+						return pengiriman.Ongkir
+					}
+					return ""
+				}(),
+				trx.Status,
+			}
+
+			for i, v := range values {
+				cell, _ := excelize.CoordinatesToCellName(i+1, row)
+				f.SetCellValue(sheetDetail, cell, v)
+			}
+			row++
 		}
+	}
+
+	// Tambah baris TOTAL di akhir untuk Subtotal dan Ongkir
+	totalRow := row
+	// Label TOTAL di kolom I (opsional)
+	f.SetCellValue(sheetDetail, "I"+itoa(totalRow), "TOTAL")
+	// Total Subtotal (kolom J)
+	f.SetCellValue(sheetDetail, "J"+itoa(totalRow), totalSubtotal)
+	// Total Ongkir (kolom K)
+	f.SetCellValue(sheetDetail, "K"+itoa(totalRow), totalOngkir)
+
+	f.AutoFilter(sheetDetail, "A1:L1", []excelize.AutoFilterOptions{})
+	f.SetPanes(sheetDetail, &excelize.Panes{
+		Freeze: true,
+		Split:  true,
+		YSplit: 1,
+	})
+
+	// ===============================
+	// SHEET 2 : RINGKASAN TRANSAKSI
+	// ===============================
+	sheetRingkas := "Ringkasan Transaksi"
+	f.NewSheet(sheetRingkas)
+
+	headersRingkas := []string{
+		"ID Transaksi",
+		"Tanggal",
+		"Pelanggan",
+		"Total Produk",
+		"Ongkir",
+		"Total Bayar",
+		"Status",
+	}
+
+	for i, h := range headersRingkas {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(sheetRingkas, cell, h)
+		f.SetCellStyle(sheetRingkas, cell, cell, headerStyle)
+	}
+
+	cursor2, _ := trxColl.Find(ctx, bson.M{})
+	defer cursor2.Close(ctx)
+
+	row = 2
+	var ringkasTotalSubtotal float64
+	var ringkasTotalOngkir float64
+	for cursor2.Next(ctx) {
+		var trx models.Transaksi
+		cursor2.Decode(&trx)
+
+		var pelanggan models.Pelanggan
+		_ = pelangganColl.FindOne(ctx, bson.M{"_id": trx.PelangganID}).Decode(&pelanggan)
+
+		var pengiriman models.Pengiriman
+		_ = pengirimanColl.FindOne(ctx, bson.M{"transaksi_id": trx.ID}).Decode(&pengiriman)
+
+		// Akumulasi total di sheet ringkasan
+		ringkasTotalSubtotal += trx.TotalHarga
+		ringkasTotalOngkir += pengiriman.Ongkir
 
 		values := []interface{}{
-			bayar.ID,
-			bayar.TransaksiID,
-			kasirNama,
-			bayar.Metode,
-			bayar.TotalBayar,
-			bayar.Status,
-			bayar.CreatedAt.Format("2006-01-02 15:04:05"),
+			trx.ID,
+			trx.CreatedAt.Format("02-01-2006"),
+			pelanggan.Nama,
+			trx.TotalProduk,
+			pengiriman.Ongkir,
+			trx.TotalHarga + pengiriman.Ongkir,
+			trx.Status,
 		}
-		for col, val := range values {
-			cell, _ := excelize.CoordinatesToCellName(col+1, row)
-			f.SetCellValue(sheet, cell, val)
+
+		for i, v := range values {
+			cell, _ := excelize.CoordinatesToCellName(i+1, row)
+			f.SetCellValue(sheetRingkas, cell, v)
 		}
 		row++
 	}
 
-	// Lebar kolom otomatis
-	for _, col := range columns {
-		f.SetColWidth(sheet, col, col, 25)
-	}
+	// Tambah baris TOTAL di akhir untuk Ongkir dan Subtotal (Total Harga)
+	totalRow2 := row
+	// Label TOTAL di kolom C (opsional)
+	f.SetCellValue(sheetRingkas, "C"+itoa(totalRow2), "TOTAL")
+	// Total Ongkir (kolom E)
+	f.SetCellValue(sheetRingkas, "E"+itoa(totalRow2), ringkasTotalOngkir)
+	// Total Subtotal/Produk (kolom D atau Total Harga di kolom F?)
+	// Isi total subtotal (Total Harga tanpa ongkir) di kolom D sebagai referensi jumlah nilai produk
+	f.SetCellValue(sheetRingkas, "D"+itoa(totalRow2), ringkasTotalSubtotal)
 
-	// Output Excel ke browser
-	var buf bytes.Buffer
-	if err := f.Write(&buf); err != nil {
-		return c.Status(500).SendString("Gagal generate Excel")
-	}
+	f.AutoFilter(sheetRingkas, "A1:G1", []excelize.AutoFilterOptions{})
+	f.SetPanes(sheetRingkas, &excelize.Panes{
+		Freeze: true,
+		Split:  true,
+		YSplit: 1,
+	})
+
+	// ===============================
+	// RESPONSE
+	// ===============================
+	f.SetActiveSheet(0)
 
 	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	c.Set("Content-Disposition", "attachment;filename=laporan.xlsx")
-	return c.SendStream(&buf)
+	c.Set("Content-Disposition", "attachment; filename=laporan_mbg.xlsx")
+
+	buf, _ := f.WriteToBuffer()
+	return c.Send(buf.Bytes())
 }
 
-// GetBestSellers godoc
-//
-//	@Summary		Best sellers summary
-//	@Description	Ambil produk terlaris berdasarkan transaksi dalam N hari terakhir
-//	@Tags			Laporan
-//	@Security		BearerAuth
-//	@Produce		json
-//	@Param			days	query	int	false	"Jumlah hari ke belakang" default(7)
-//	@Success		200	{array}	map[string]interface{}
-//	@Router			/laporan/best-sellers [get]
-func GetBestSellers(c *fiber.Ctx) error {
-	daysStr := c.Query("days", "7")
-	days, err := strconv.Atoi(daysStr)
-	if err != nil || days <= 0 {
-		days = 7
-	}
-	end := time.Now()
-	start := end.AddDate(0, 0, -days)
-	list, err := repository.GetBestSellers(start, end, 10)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"message": "Gagal mengambil best sellers", "error": err.Error()})
-	}
-	// Format response simple array
-	resp := make([]map[string]interface{}, 0, len(list))
-	for _, it := range list {
-		resp = append(resp, map[string]interface{}{
-			"produk_id": it.ProdukID,
-			"nama":      it.Nama,
-			"jumlah":    it.Jumlah,
-		})
-	}
-	return c.JSON(resp)
+// helper
+func itoa(i int) string {
+	return fmt.Sprintf("%d", i)
 }

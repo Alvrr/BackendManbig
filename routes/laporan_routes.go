@@ -8,7 +8,13 @@ import (
 )
 
 func LaporanRoutes(app *fiber.App) {
-	app.Get("/laporan/export/excel", middleware.RoleGuard("admin"), controllers.ExportLaporanExcel)
-	// Best sellers: bisa diakses admin dan gudang
-	app.Get("/laporan/best-sellers", middleware.RoleGuard("admin", "gudang"), controllers.GetBestSellers)
+
+	laporanController := controllers.NewLaporanController()
+
+	app.Get(
+		"/laporan/export/excel",
+		middleware.JWTMiddleware,
+		middleware.RoleGuard("admin"),
+		laporanController.ExportExcel,
+	)
 }
