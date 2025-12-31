@@ -3,6 +3,7 @@ package controllers
 import (
 	"backend/models"
 	"backend/repository"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -69,8 +70,8 @@ func CreateTransaksi(c *fiber.Ctx) error {
 	if _, err := repository.CreateTransaksi(&t); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal membuat transaksi"})
 	}
-	// Kurangi stok: buat mutasi keluar untuk setiap item transaksi
-	// Mutasi dibuat dengan user_id dari kasir pembuat transaksi
+	// Kurangi stok (reservasi): buat mutasi keluar untuk setiap item transaksi
+	// Mutasi dibuat dengan user_id dari kasir pembuat transaksi dan ditandai ref transaksi
 	if len(t.Items) > 0 {
 		for _, it := range t.Items {
 			if it.ProdukID == "" || it.Jumlah <= 0 {
@@ -83,12 +84,15 @@ func CreateTransaksi(c *fiber.Ctx) error {
 				// Namun kita tetap lanjut agar transaksi tidak gagal seluruhnya
 			}
 			m := &models.StokMutasi{
-				ID:        mutasiID,
-				ProdukID:  it.ProdukID,
-				Jenis:     "keluar",
-				Jumlah:    it.Jumlah,
-				UserID:    t.KasirID,
-				CreatedAt: time.Now(),
+				ID:         mutasiID,
+				ProdukID:   it.ProdukID,
+				Jenis:      "keluar",
+				Jumlah:     it.Jumlah,
+				UserID:     t.KasirID,
+				RefID:      t.ID,
+				RefType:    "transaksi",
+				Keterangan: "reservasi",
+				CreatedAt:  time.Now(),
 			}
 			// Abaikan error agar transaksi tetap sukses. Log di repository jika perlu.
 			_, _ = repository.CreateMutasi(m)
@@ -121,6 +125,27 @@ func UpdateTransaksi(c *fiber.Ctx) error {
 	if _, err := repository.UpdateTransaksi(id, bson.M{"status": body.Status}); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal update transaksi"})
 	}
+	// Jika dibatalkan, kembalikan stok dengan mutasi masuk
+	if strings.EqualFold(body.Status, "batal") && len(t.Items) > 0 {
+		for _, it := range t.Items {
+			if it.ProdukID == "" || it.Jumlah <= 0 {
+				continue
+			}
+			mutasiID, _ := repository.GenerateID("stok")
+			m := &models.StokMutasi{
+				ID:         mutasiID,
+				ProdukID:   it.ProdukID,
+				Jenis:      "masuk",
+				Jumlah:     it.Jumlah,
+				UserID:     t.KasirID,
+				RefID:      t.ID,
+				RefType:    "transaksi",
+				Keterangan: "batal",
+				CreatedAt:  time.Now(),
+			}
+			_, _ = repository.CreateMutasi(m)
+		}
+	}
 	return c.JSON(fiber.Map{"message": "Transaksi berhasil diupdate"})
 }
 
@@ -138,6 +163,27 @@ func DeleteTransaksi(c *fiber.Ctx) error {
 	}
 	if _, err := repository.DeleteTransaksi(id); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal hapus transaksi"})
+	}
+	// Kembalikan stok jika transaksi memiliki item (asumsi reservasi sudah keluar)
+	if len(t.Items) > 0 {
+		for _, it := range t.Items {
+			if it.ProdukID == "" || it.Jumlah <= 0 {
+				continue
+			}
+			mutasiID, _ := repository.GenerateID("stok")
+			m := &models.StokMutasi{
+				ID:         mutasiID,
+				ProdukID:   it.ProdukID,
+				Jenis:      "masuk",
+				Jumlah:     it.Jumlah,
+				UserID:     t.KasirID,
+				RefID:      t.ID,
+				RefType:    "transaksi",
+				Keterangan: "hapus",
+				CreatedAt:  time.Now(),
+			}
+			_, _ = repository.CreateMutasi(m)
+		}
 	}
 	return c.JSON(fiber.Map{"message": "Transaksi berhasil dihapus"})
 }

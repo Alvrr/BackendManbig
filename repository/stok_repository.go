@@ -21,6 +21,7 @@ func EnsureStokIndexes() error {
 	_, err := stokCol().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "produk_id", Value: 1}}},
 		{Keys: bson.D{{Key: "created_at", Value: -1}}},
+		{Keys: bson.D{{Key: "ref_id", Value: 1}}},
 	})
 	return err
 }
@@ -94,4 +95,41 @@ func GetSaldoProduk(produkID string) (*models.StokSaldo, error) {
 		return &s, nil
 	}
 	return &models.StokSaldo{ProdukID: produkID, Masuk: 0, Keluar: 0, Saldo: 0}, nil
+}
+
+// Update semua mutasi dengan ref_id tertentu, set keterangan
+func UpdateMutasiKeteranganByRef(refID string, keterangan string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := stokCol().UpdateMany(ctx, bson.M{"ref_id": refID}, bson.M{"$set": bson.M{"keterangan": keterangan}})
+	return err
+}
+
+// List semua mutasi dengan filter generic
+func ListMutasi(filter bson.M, page, pageSize int, sortDesc bool) ([]models.StokMutasi, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	opts := options.Find()
+	if sortDesc {
+		opts.SetSort(bson.D{{Key: "created_at", Value: -1}})
+	} else {
+		opts.SetSort(bson.D{{Key: "created_at", Value: 1}})
+	}
+	if page > 0 && pageSize > 0 {
+		opts.SetSkip(int64((page - 1) * pageSize)).SetLimit(int64(pageSize))
+	}
+	cur, err := stokCol().Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var list []models.StokMutasi
+	for cur.Next(ctx) {
+		var m models.StokMutasi
+		if err := cur.Decode(&m); err != nil {
+			return nil, err
+		}
+		list = append(list, m)
+	}
+	return list, nil
 }

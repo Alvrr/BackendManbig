@@ -172,6 +172,8 @@ func SelesaikanPembayaran(c *fiber.Ctx) error {
 	// Tandai transaksi terkait menjadi Selesai
 	if pembayaran.TransaksiID != "" {
 		_, _ = repository.UpdateTransaksi(pembayaran.TransaksiID, bson.M{"status": "Selesai"})
+		// Mutasi stok yang berelasi dengan transaksi tersebut diberi keterangan 'terjual'
+		_ = repository.UpdateMutasiKeteranganByRef(pembayaran.TransaksiID, "terjual")
 	}
 	return c.JSON(fiber.Map{
 		"message": "Transaksi berhasil diselesaikan",
