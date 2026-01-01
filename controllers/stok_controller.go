@@ -3,12 +3,14 @@ package controllers
 import (
 	"backend/models"
 	"backend/repository"
-	"time"
+	"bytes"
+	"log"
 	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"go.mongodb.org/mongo-driver/bson"
 	excelize "github.com/xuri/excelize/v2"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 // GET /stok/saldo/:produk_id (view semua role)
@@ -40,11 +42,21 @@ func ListMutasi(c *fiber.Ctx) error {
 	ket := c.Query("keterangan")
 	refType := c.Query("ref_type")
 	refID := c.Query("ref_id")
-	if produkID != "" { filter["produk_id"] = produkID }
-	if jenis != "" { filter["jenis"] = jenis }
-	if ket != "" { filter["keterangan"] = ket }
-	if refType != "" { filter["ref_type"] = refType }
-	if refID != "" { filter["ref_id"] = refID }
+	if produkID != "" {
+		filter["produk_id"] = produkID
+	}
+	if jenis != "" {
+		filter["jenis"] = jenis
+	}
+	if ket != "" {
+		filter["keterangan"] = ket
+	}
+	if refType != "" {
+		filter["ref_type"] = refType
+	}
+	if refID != "" {
+		filter["ref_id"] = refID
+	}
 	// Date range
 	start := c.Query("start")
 	end := c.Query("end")
@@ -84,11 +96,21 @@ func ExportMutasiExcel(c *fiber.Ctx) error {
 	ket := c.Query("keterangan")
 	refType := c.Query("ref_type")
 	refID := c.Query("ref_id")
-	if produkID != "" { filter["produk_id"] = produkID }
-	if jenis != "" { filter["jenis"] = jenis }
-	if ket != "" { filter["keterangan"] = ket }
-	if refType != "" { filter["ref_type"] = refType }
-	if refID != "" { filter["ref_id"] = refID }
+	if produkID != "" {
+		filter["produk_id"] = produkID
+	}
+	if jenis != "" {
+		filter["jenis"] = jenis
+	}
+	if ket != "" {
+		filter["keterangan"] = ket
+	}
+	if refType != "" {
+		filter["ref_type"] = refType
+	}
+	if refID != "" {
+		filter["ref_id"] = refID
+	}
 	start := c.Query("start")
 	end := c.Query("end")
 	if start != "" || end != "" {
@@ -113,30 +135,70 @@ func ExportMutasiExcel(c *fiber.Ctx) error {
 	}
 
 	f := excelize.NewFile()
+	// Rename default sheet for clarity
 	sheet := f.GetSheetName(f.GetActiveSheetIndex())
-	headers := []string{"Tanggal", "Produk ID", "Jenis", "Jumlah", "User ID", "Ref ID", "Ref Type", "Keterangan"}
+	f.SetSheetName(sheet, "Riwayat Stok")
+	sheet = "Riwayat Stok"
+	// Header style (bold, centered)
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
+	headers := []string{"Tanggal", "Produk ID", "Jenis", "Jumlah", "User ID", "Ref", "Keterangan"}
 	for i, h := range headers {
 		col, _ := excelize.ColumnNumberToName(i + 1)
-		_ = f.SetCellValue(sheet, col+"1", h)
+		cell := col + "1"
+		_ = f.SetCellValue(sheet, cell, h)
+		_ = f.SetCellStyle(sheet, cell, cell, headerStyle)
 	}
 	for idx, m := range list {
 		row := idx + 2
-		_ = f.SetCellValue(sheet, "A"+strconv.Itoa(row), m.CreatedAt.Format(time.RFC3339))
+		dateStr := m.CreatedAt.Format(time.RFC3339)
+		userStr := m.UserID
+		if userStr == "" {
+			userStr = "-"
+		}
+		// Gabungkan ref_type dan ref_id mirip tampilan di UI: "type:id" atau fallback
+		refStr := "-"
+		if m.RefType != "" && m.RefID != "" {
+			refStr = m.RefType + ":" + m.RefID
+		} else if m.RefType != "" {
+			refStr = m.RefType
+		} else if m.RefID != "" {
+			refStr = m.RefID
+		}
+		ketStr := m.Keterangan
+		if ketStr == "" {
+			ketStr = "-"
+		}
+		_ = f.SetCellValue(sheet, "A"+strconv.Itoa(row), dateStr)
 		_ = f.SetCellValue(sheet, "B"+strconv.Itoa(row), m.ProdukID)
 		_ = f.SetCellValue(sheet, "C"+strconv.Itoa(row), m.Jenis)
 		_ = f.SetCellValue(sheet, "D"+strconv.Itoa(row), m.Jumlah)
-		_ = f.SetCellValue(sheet, "E"+strconv.Itoa(row), m.UserID)
-		_ = f.SetCellValue(sheet, "F"+strconv.Itoa(row), m.RefID)
-		_ = f.SetCellValue(sheet, "G"+strconv.Itoa(row), m.RefType)
-		_ = f.SetCellValue(sheet, "H"+strconv.Itoa(row), m.Keterangan)
+		_ = f.SetCellValue(sheet, "E"+strconv.Itoa(row), userStr)
+		_ = f.SetCellValue(sheet, "F"+strconv.Itoa(row), refStr)
+		_ = f.SetCellValue(sheet, "G"+strconv.Itoa(row), ketStr)
 	}
-	// Prepare download
+	// Prepare download using buffer for reliability
+	// Freeze header row and add autofilter
+	_ = f.SetPanes(sheet, &excelize.Panes{Freeze: true, Split: true, YSplit: 1})
+	_ = f.AutoFilter(sheet, "A1:G1", []excelize.AutoFilterOptions{})
+	f.SetActiveSheet(0)
+
+	buf, err := f.WriteToBuffer()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal menyiapkan file"})
+	}
+	// Set explicit headers for Excel download
 	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	c.Set("Content-Disposition", "attachment; filename=riwayat_stok.xlsx")
-	if err := f.Write(c.Response().BodyWriter()); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal menulis file"})
-	}
-	return nil
+	c.Set("Content-Transfer-Encoding", "binary")
+	c.Set("Cache-Control", "no-store")
+	c.Set("Content-Length", strconv.Itoa(len(buf.Bytes())))
+	// Log ukuran buffer untuk debugging klien
+	log.Printf("ExportMutasiExcel bytes: %d", len(buf.Bytes()))
+	// Stream the buffer to ensure proper framing
+	return c.SendStream(bytes.NewReader(buf.Bytes()))
 }
 
 // POST /stok (admin+gudang)
@@ -145,47 +207,53 @@ func CreateMutasi(c *fiber.Ctx) error {
 	if err := c.BodyParser(&m); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Data tidak valid"})
 	}
-	if m.ProdukID == "" || m.Jenis == "" || m.Jumlah == 0 {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "produk_id, jenis, jumlah wajib"})
+	if m.ProdukID == "" || m.Jenis == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "produk_id dan jenis wajib"})
 	}
-	// Normalisasi untuk adjust: ubah menjadi delta masuk/keluar dibanding saldo saat ini
-	if m.Jenis == "adjust" {
+	// Validasi jenis mutasi (hanya masuk/keluar)
+	if m.Jenis != "masuk" && m.Jenis != "keluar" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "jenis harus salah satu dari: masuk, keluar"})
+	}
+	// Aturan jumlah: masuk/keluar wajib > 0
+	if m.Jumlah <= 0 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "jumlah harus lebih dari 0 untuk mutasi masuk/keluar"})
+	}
+
+	// Jika keluar (manual), validasi stok mencukupi lebih dulu
+	if m.Jenis == "keluar" {
 		saldo, err := repository.GetSaldoProduk(m.ProdukID)
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal membaca saldo untuk adjust"})
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal membaca saldo"})
 		}
-		// Jika sama, tidak perlu perubahan; jadikan jumlah 0 masuk agar tidak mempengaruhi saldo
-		if m.Jumlah == saldo.Saldo {
-			m.Jenis = "masuk"
-			m.Jumlah = 0
-		} else if m.Jumlah > saldo.Saldo {
-			m.Jenis = "masuk"
-			m.Jumlah = m.Jumlah - saldo.Saldo
-		} else {
-			m.Jenis = "keluar"
-			m.Jumlah = saldo.Saldo - m.Jumlah
+		if m.Jumlah > saldo.Saldo {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Stok tidak mencukupi"})
 		}
 	}
+	// Normalisasi untuk adjust: ubah menjadi delta masuk/keluar dibanding saldo saat ini
+	// Jenis adjust dihapus: tidak ada normalisasi target saldo
 	// Set ID dari counter stok + created_at
 	id, err := repository.GenerateID("stok")
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal generate ID"})
 	}
 	m.ID = id
-	       // Wajib isi user_id dari token, jika tidak ada tolak
-	       uid, ok := c.Locals("userID").(string)
-	       if !ok || uid == "" {
-		       return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "User login tidak valid"})
-	       }
-	       m.UserID = uid
-	       // Mutasi manual: ref_type harus 'manual', ref_id dikosongkan
-	       if m.RefType == "" || m.RefType == "manual" {
-		       m.RefType = "manual"
-		       m.RefID = ""
-	       }
-	       m.CreatedAt = time.Now()
-	       if _, err := repository.CreateMutasi(&m); err != nil {
-		       return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": err.Error()})
-	       }
-	       return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Mutasi stok berhasil dibuat", "id": m.ID})
+	// Wajib isi user_id dari token, jika tidak ada tolak
+	uid, ok := c.Locals("userID").(string)
+	if !ok || uid == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"message": "User login tidak valid"})
+	}
+	m.UserID = uid
+	// Mutasi manual: jika ref_type kosong, set default 'manual'.
+	if m.RefType == "" {
+		m.RefType = "manual"
+	}
+	// Auto set ref_id untuk mutasi manual jika belum diisi: gunakan ID mutasi
+	if m.RefType == "manual" && m.RefID == "" {
+		m.RefID = m.ID
+	}
+	m.CreatedAt = time.Now()
+	if _, err := repository.CreateMutasi(&m); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": err.Error()})
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Mutasi stok berhasil dibuat", "id": m.ID})
 }
