@@ -7,6 +7,7 @@ import (
 
 	"backend/config"
 	"backend/models"
+	"backend/repository"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/xuri/excelize/v2"
@@ -22,6 +23,36 @@ func NewLaporanController() *LaporanController {
 	return &LaporanController{
 		DB: config.DB,
 	}
+}
+
+// BestSellers returns top selling products within last N days
+func (lc *LaporanController) BestSellers(c *fiber.Ctx) error {
+	daysParam := c.Query("days", "7")
+	limitParam := c.Query("limit", "5")
+
+	days := 7
+	limit := 5
+	if d, err := parseInt(daysParam); err == nil && d > 0 {
+		days = d
+	}
+	if l, err := parseInt(limitParam); err == nil && l > 0 {
+		limit = l
+	}
+
+	end := time.Now()
+	start := end.AddDate(0, 0, -days)
+
+	list, err := repository.GetBestSellers(start, end, limit)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.Status(fiber.StatusOK).JSON(list)
+}
+
+func parseInt(s string) (int, error) {
+	var i int
+	_, err := fmt.Sscanf(s, "%d", &i)
+	return i, err
 }
 
 func (lc *LaporanController) ExportExcel(c *fiber.Ctx) error {

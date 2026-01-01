@@ -34,8 +34,19 @@ func GetTransaksiByID(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"message": "Transaksi tidak ditemukan"})
 	}
-	if role != "admin" && t.KasirID != userID {
+	// Access rules:
+	// - Admin: full access
+	// - Kasir: only own transactions
+	// - Driver: allowed if assigned to the related pengiriman of this transaksi
+	if role == "kasir" && t.KasirID != userID {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
+	}
+	if role == "driver" {
+		// Check assignment via pengiriman (transaksi_id + driver_id must match)
+		list, _ := repository.GetPengirimanFiltered(bson.M{"transaksi_id": id, "driver_id": userID})
+		if len(list) == 0 {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
+		}
 	}
 	return c.JSON(t)
 }

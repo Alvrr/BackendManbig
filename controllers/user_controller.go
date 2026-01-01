@@ -45,8 +45,10 @@ func GetAllDrivers(c *fiber.Ctx) error {
 //
 // CRUD Karyawan (admin only)
 func GetAllKaryawan(c *fiber.Ctx) error {
-	if c.Locals("userRole") != "admin" {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses hanya untuk admin"})
+	role, _ := c.Locals("userRole").(string)
+	// Allow admin and driver to view karyawan list (read-only)
+	if role != "admin" && role != "driver" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses hanya untuk admin atau driver"})
 	}
 	users, err := repository.GetAllKaryawan()
 	if err != nil {
