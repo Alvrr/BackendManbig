@@ -15,7 +15,7 @@ func ProdukRoutes(app *fiber.App) {
 	produk.Get("/:id", middleware.RoleGuard("admin", "kasir", "gudang", "driver"), controllers.GetProdukByID)
 
 	// POST/PUT/DELETE hanya admin, gudang
-	produk.Post("/", middleware.RoleGuard("admin", "gudang"), controllers.CreateProduk)
-	produk.Put("/:id", middleware.RoleGuard("admin", "gudang"), controllers.UpdateProduk)
-	produk.Delete("/:id", middleware.RoleGuard("admin", "gudang"), controllers.DeleteProduk)
+	produk.Post("/", middleware.RoleGuard("gudang"), controllers.CreateProduk)
+	produk.Put("/:id", middleware.RoleGuard("gudang"), controllers.UpdateProduk)
+	produk.Delete("/:id", middleware.RoleGuard("gudang"), controllers.DeleteProduk)
 }

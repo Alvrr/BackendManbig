@@ -8,10 +8,71 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func userCol() *mongo.Collection {
 	return config.UserCollection
+}
+
+// EnsureUserIndexes ensures unique constraints for user identity fields.
+// NOTE: If existing data contains duplicates, MongoDB will reject index creation.
+func EnsureUserIndexes() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ci := &options.Collation{Locale: "en", Strength: 2} // case-insensitive
+	_, err := userCol().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "email", Value: 1}},
+			Options: options.Index().SetName("uniq_email_ci").SetUnique(true).SetCollation(ci),
+		},
+		{
+			Keys:    bson.D{{Key: "nama", Value: 1}},
+			Options: options.Index().SetName("uniq_nama_ci").SetUnique(true).SetCollation(ci),
+		},
+	})
+	return err
+}
+
+func ExistsUserByEmail(email string, excludeID string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	filter := bson.M{"email": email}
+	if excludeID != "" {
+		filter["_id"] = bson.M{"$ne": excludeID}
+	}
+
+	ci := &options.Collation{Locale: "en", Strength: 2}
+	err := userCol().FindOne(ctx, filter, options.FindOne().SetCollation(ci)).Err()
+	if err == mongo.ErrNoDocuments {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func ExistsUserByNama(nama string, excludeID string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	filter := bson.M{"nama": nama}
+	if excludeID != "" {
+		filter["_id"] = bson.M{"$ne": excludeID}
+	}
+
+	ci := &options.Collation{Locale: "en", Strength: 2}
+	err := userCol().FindOne(ctx, filter, options.FindOne().SetCollation(ci)).Err()
+	if err == mongo.ErrNoDocuments {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // List all drivers

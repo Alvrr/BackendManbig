@@ -3,13 +3,10 @@ package controllers
 import (
 	"backend/models"
 	"backend/repository"
-	"bytes"
-	"log"
 	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	excelize "github.com/xuri/excelize/v2"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -85,120 +82,6 @@ func ListMutasi(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal mengambil mutasi"})
 	}
 	return c.JSON(list)
-}
-
-// GET /stok/mutasi/export (admin, gudang) - export filtered mutasi to Excel
-func ExportMutasiExcel(c *fiber.Ctx) error {
-	// Reuse same filters as ListMutasi
-	filter := bson.M{}
-	produkID := c.Query("produk_id")
-	jenis := c.Query("jenis")
-	ket := c.Query("keterangan")
-	refType := c.Query("ref_type")
-	refID := c.Query("ref_id")
-	if produkID != "" {
-		filter["produk_id"] = produkID
-	}
-	if jenis != "" {
-		filter["jenis"] = jenis
-	}
-	if ket != "" {
-		filter["keterangan"] = ket
-	}
-	if refType != "" {
-		filter["ref_type"] = refType
-	}
-	if refID != "" {
-		filter["ref_id"] = refID
-	}
-	start := c.Query("start")
-	end := c.Query("end")
-	if start != "" || end != "" {
-		rangeFilter := bson.M{}
-		if start != "" {
-			if t, err := time.Parse(time.RFC3339, start); err == nil {
-				rangeFilter["$gte"] = t
-			}
-		}
-		if end != "" {
-			if t, err := time.Parse(time.RFC3339, end); err == nil {
-				rangeFilter["$lte"] = t
-			}
-		}
-		if len(rangeFilter) > 0 {
-			filter["created_at"] = rangeFilter
-		}
-	}
-	list, err := repository.ListMutasi(filter, 0, 0, true)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal mengambil mutasi"})
-	}
-
-	f := excelize.NewFile()
-	// Rename default sheet for clarity
-	sheet := f.GetSheetName(f.GetActiveSheetIndex())
-	f.SetSheetName(sheet, "Riwayat Stok")
-	sheet = "Riwayat Stok"
-	// Header style (bold, centered)
-	headerStyle, _ := f.NewStyle(&excelize.Style{
-		Font:      &excelize.Font{Bold: true},
-		Alignment: &excelize.Alignment{Horizontal: "center"},
-	})
-	headers := []string{"Tanggal", "Produk ID", "Jenis", "Jumlah", "User ID", "Ref", "Keterangan"}
-	for i, h := range headers {
-		col, _ := excelize.ColumnNumberToName(i + 1)
-		cell := col + "1"
-		_ = f.SetCellValue(sheet, cell, h)
-		_ = f.SetCellStyle(sheet, cell, cell, headerStyle)
-	}
-	for idx, m := range list {
-		row := idx + 2
-		dateStr := m.CreatedAt.Format(time.RFC3339)
-		userStr := m.UserID
-		if userStr == "" {
-			userStr = "-"
-		}
-		// Gabungkan ref_type dan ref_id mirip tampilan di UI: "type:id" atau fallback
-		refStr := "-"
-		if m.RefType != "" && m.RefID != "" {
-			refStr = m.RefType + ":" + m.RefID
-		} else if m.RefType != "" {
-			refStr = m.RefType
-		} else if m.RefID != "" {
-			refStr = m.RefID
-		}
-		ketStr := m.Keterangan
-		if ketStr == "" {
-			ketStr = "-"
-		}
-		_ = f.SetCellValue(sheet, "A"+strconv.Itoa(row), dateStr)
-		_ = f.SetCellValue(sheet, "B"+strconv.Itoa(row), m.ProdukID)
-		_ = f.SetCellValue(sheet, "C"+strconv.Itoa(row), m.Jenis)
-		_ = f.SetCellValue(sheet, "D"+strconv.Itoa(row), m.Jumlah)
-		_ = f.SetCellValue(sheet, "E"+strconv.Itoa(row), userStr)
-		_ = f.SetCellValue(sheet, "F"+strconv.Itoa(row), refStr)
-		_ = f.SetCellValue(sheet, "G"+strconv.Itoa(row), ketStr)
-	}
-	// Prepare download using buffer for reliability
-	// Freeze header row and add autofilter
-	_ = f.SetPanes(sheet, &excelize.Panes{Freeze: true, Split: true, YSplit: 1})
-	_ = f.AutoFilter(sheet, "A1:G1", []excelize.AutoFilterOptions{})
-	f.SetActiveSheet(0)
-
-	buf, err := f.WriteToBuffer()
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal menyiapkan file"})
-	}
-	// Set explicit headers for Excel download
-	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	c.Set("Content-Disposition", "attachment; filename=riwayat_stok.xlsx")
-	c.Set("Content-Transfer-Encoding", "binary")
-	c.Set("Cache-Control", "no-store")
-	c.Set("Content-Length", strconv.Itoa(len(buf.Bytes())))
-	// Log ukuran buffer untuk debugging klien
-	log.Printf("ExportMutasiExcel bytes: %d", len(buf.Bytes()))
-	// Stream the buffer to ensure proper framing
-	return c.SendStream(bytes.NewReader(buf.Bytes()))
 }
 
 // POST /stok (admin+gudang)

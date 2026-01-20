@@ -84,12 +84,18 @@ type BestSellerItem struct {
 	Jumlah   int    `bson:"jumlah" json:"jumlah"`
 }
 
-// GetBestSellers aggregates transaksi items within date range and returns top products
-func GetBestSellers(start, end time.Time, limit int) ([]BestSellerItem, error) {
+// GetBestSellers aggregates transaksi items within date range and returns top products.
+// If kasirID is non-empty, results are limited to transaksi milik kasir tersebut.
+func GetBestSellers(start, end time.Time, limit int, kasirID string) ([]BestSellerItem, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	matchStage := bson.D{{Key: "$match", Value: bson.M{"created_at": bson.M{"$gte": start, "$lte": end}}}}
+	match := bson.M{"created_at": bson.M{"$gte": start, "$lte": end}}
+	if kasirID != "" {
+		// IMPORTANT: filter ownership untuk kasir (created_by  kasir_id)
+		match["kasir_id"] = kasirID
+	}
+	matchStage := bson.D{{Key: "$match", Value: match}}
 	unwindStage := bson.D{{Key: "$unwind", Value: "$items"}}
 	groupStage := bson.D{{Key: "$group", Value: bson.M{
 		"_id":    "$items.produk_id",

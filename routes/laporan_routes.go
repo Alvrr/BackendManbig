@@ -20,7 +20,7 @@ func LaporanRoutes(app *fiber.App) {
 
 	app.Get(
 		"/laporan/export/excel",
-		middleware.JWTMiddleware,
+		middleware.JWTMiddlewareForExport,
 		middleware.RoleGuard("admin"),
 		laporanController.ExportExcel,
 	)

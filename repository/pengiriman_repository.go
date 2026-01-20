@@ -73,6 +73,9 @@ func UpdatePengiriman(id string, p models.Pengiriman) (*mongo.UpdateResult, erro
 	if p.Status != "" {
 		set["status"] = p.Status
 	}
+	if p.AlasanBatal != "" {
+		set["alasan_batal"] = p.AlasanBatal
+	}
 	upd := bson.M{"$set": set}
 	return pengirimanCol().UpdateOne(ctx, bson.M{"_id": id}, upd)
 }

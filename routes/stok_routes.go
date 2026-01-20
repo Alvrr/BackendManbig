@@ -10,10 +10,9 @@ import (
 func StokRoutes(app *fiber.App) {
 	g := app.Group("/stok")
 	// View saldo & mutasi: semua role (admin, kasir, gudang, driver)
-	g.Get("/saldo/:produk_id", middleware.RoleGuard("admin", "kasir", "gudang", "driver"), controllers.GetSaldoProduk)
-	g.Get("/mutasi/:produk_id", middleware.RoleGuard("admin", "kasir", "gudang", "driver"), controllers.GetMutasiByProduk)
-	g.Get("/mutasi", middleware.RoleGuard("admin", "kasir", "gudang", "driver"), controllers.ListMutasi)
-	g.Get("/mutasi/export", middleware.RoleGuard("admin", "gudang"), controllers.ExportMutasiExcel)
+	g.Get("/saldo/:produk_id", middleware.RoleGuard("admin", "kasir", "gudang"), controllers.GetSaldoProduk)
+	g.Get("/mutasi/:produk_id", middleware.RoleGuard("admin", "kasir", "gudang"), controllers.GetMutasiByProduk)
+	g.Get("/mutasi", middleware.RoleGuard("admin", "kasir", "gudang"), controllers.ListMutasi)
 	// Create mutasi: admin + gudang
-	g.Post("/", middleware.RoleGuard("admin", "gudang"), controllers.CreateMutasi)
+	g.Post("/", middleware.RoleGuard("gudang"), controllers.CreateMutasi)
 }

@@ -3,9 +3,12 @@ package controllers
 import (
 	"backend/models"
 	"backend/repository"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -108,6 +111,27 @@ func CreateKaryawan(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Request tidak valid"})
 	}
 
+	user.Email = strings.TrimSpace(user.Email)
+	user.Nama = strings.TrimSpace(user.Nama)
+	if user.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Email wajib diisi"})
+	}
+	if user.Nama == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Nama wajib diisi"})
+	}
+
+	// Cegah email sama & nama sama (case-insensitive)
+	if exists, err := repository.ExistsUserByEmail(user.Email, ""); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal validasi email"})
+	} else if exists {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Email sudah digunakan"})
+	}
+	if exists, err := repository.ExistsUserByNama(user.Nama, ""); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal validasi nama"})
+	} else if exists {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Nama sudah digunakan"})
+	}
+
 	// Validasi role yang bisa dibuat: kasir, gudang, driver
 	if user.Role != "kasir" && user.Role != "gudang" && user.Role != "driver" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Role harus kasir, gudang, atau driver"})
@@ -138,6 +162,14 @@ func CreateKaryawan(c *fiber.Ctx) error {
 	user.CreatedAt = time.Now()
 	_, err = repository.CreateKaryawan(&user)
 	if err != nil {
+		var we mongo.WriteException
+		if errors.As(err, &we) {
+			for _, e := range we.WriteErrors {
+				if e.Code == 11000 {
+					return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Email atau nama sudah digunakan"})
+				}
+			}
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal menambah karyawan"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Karyawan berhasil ditambah"})
@@ -167,6 +199,23 @@ func UpdateKaryawan(c *fiber.Ctx) error {
 	if err := c.BodyParser(&user); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Request tidak valid"})
 	}
+
+	user.Email = strings.TrimSpace(user.Email)
+	user.Nama = strings.TrimSpace(user.Nama)
+	if user.Email != "" {
+		if exists, err := repository.ExistsUserByEmail(user.Email, id); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal validasi email"})
+		} else if exists {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Email sudah digunakan"})
+		}
+	}
+	if user.Nama != "" {
+		if exists, err := repository.ExistsUserByNama(user.Nama, id); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal validasi nama"})
+		} else if exists {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Nama sudah digunakan"})
+		}
+	}
 	// Hash password jika diupdate
 	if user.Password != "" {
 		hashed, err := bcrypt.GenerateFromPassword([]byte(user.Password), 12)
@@ -177,6 +226,14 @@ func UpdateKaryawan(c *fiber.Ctx) error {
 	}
 	_, err := repository.UpdateKaryawan(id, user)
 	if err != nil {
+		var we mongo.WriteException
+		if errors.As(err, &we) {
+			for _, e := range we.WriteErrors {
+				if e.Code == 11000 {
+					return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Email atau nama sudah digunakan"})
+				}
+			}
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal update karyawan"})
 	}
 	return c.JSON(fiber.Map{"message": "Karyawan berhasil diupdate"})
@@ -187,6 +244,25 @@ func RegisterKaryawan(c *fiber.Ctx) error {
 	var user models.User
 	if err := c.BodyParser(&user); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Request tidak valid"})
+	}
+
+	user.Email = strings.TrimSpace(user.Email)
+	user.Nama = strings.TrimSpace(user.Nama)
+	if user.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Email wajib diisi"})
+	}
+	if user.Nama == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Nama wajib diisi"})
+	}
+	if exists, err := repository.ExistsUserByEmail(user.Email, ""); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal validasi email"})
+	} else if exists {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Email sudah digunakan"})
+	}
+	if exists, err := repository.ExistsUserByNama(user.Nama, ""); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal validasi nama"})
+	} else if exists {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Nama sudah digunakan"})
 	}
 
 	// Validasi role yang bisa dibuat: kasir, gudang, driver
@@ -217,6 +293,14 @@ func RegisterKaryawan(c *fiber.Ctx) error {
 	user.CreatedAt = time.Now()
 	err = repository.CreateUser(&user)
 	if err != nil {
+		var we mongo.WriteException
+		if errors.As(err, &we) {
+			for _, e := range we.WriteErrors {
+				if e.Code == 11000 {
+					return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Email atau nama sudah digunakan"})
+				}
+			}
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal register karyawan"})
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Register karyawan berhasil"})

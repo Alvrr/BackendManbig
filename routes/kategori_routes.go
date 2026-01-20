@@ -15,7 +15,7 @@ func KategoriRoutes(app *fiber.App) {
 	g.Get("/:id", controllers.GetKategoriByID)
 
 	// Hanya admin & gudang yang bisa create/update/delete
-	g.Post("/", middleware.RoleGuard("admin", "gudang"), controllers.CreateKategori)
-	g.Put("/:id", middleware.RoleGuard("admin", "gudang"), controllers.UpdateKategori)
-	g.Delete("/:id", middleware.RoleGuard("admin", "gudang"), controllers.DeleteKategori)
+	g.Post("/", middleware.RoleGuard("gudang"), controllers.CreateKategori)
+	g.Put("/:id", middleware.RoleGuard("gudang"), controllers.UpdateKategori)
+	g.Delete("/:id", middleware.RoleGuard("gudang"), controllers.DeleteKategori)
 }

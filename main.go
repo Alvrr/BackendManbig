@@ -101,6 +101,11 @@ func main() {
 		log.Printf("⚠️ Gagal membuat index pengiriman: %v", err)
 	}
 
+	// Pastikan index user (unique email & nama)
+	if err := repository.EnsureUserIndexes(); err != nil {
+		log.Printf("⚠️ Gagal membuat index user: %v", err)
+	}
+
 	// Inisialisasi Fiber
 	app := fiber.New()
 
@@ -111,6 +116,11 @@ func main() {
 	// JWTMiddleware global, kecuali untuk /auth/login dan /auth/register
 	app.Use(func(c *fiber.Ctx) error {
 		path := c.Path()
+		// NOTE: export endpoints are opened via window.open and may pass token via query.
+		// They are protected at route-level via JWTMiddlewareForExport + RoleGuard.
+		if path == "/laporan/export/excel" {
+			return c.Next()
+		}
 		if path == "/auth/login" || path == "/auth/register" || strings.HasPrefix(path, "/swagger") {
 			return c.Next()
 		}

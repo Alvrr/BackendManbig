@@ -3,6 +3,7 @@ package controllers
 import (
 	"backend/models"
 	"backend/repository"
+	"fmt"
 	"strings"
 	"time"
 
@@ -16,6 +17,8 @@ func ListTransaksi(c *fiber.Ctx) error {
 	userID, _ := c.Locals("userID").(string)
 	filter := bson.M{}
 	if role != "admin" {
+		// IMPORTANT: kasir hanya boleh melihat transaksi miliknya sendiri
+		// (field DB: kasir_id  diperlakukan sebagai created_by)
 		filter["kasir_id"] = userID
 	}
 	list, err := repository.ListTransaksi(filter, 0, 0)
@@ -34,43 +37,103 @@ func GetTransaksiByID(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"message": "Transaksi tidak ditemukan"})
 	}
-	// Access rules:
-	// - Admin: full access
-	// - Kasir: only own transactions
-	// - Driver: allowed if assigned to the related pengiriman of this transaksi
+	// IMPORTANT: kasir hanya boleh melihat transaksi miliknya sendiri
 	if role == "kasir" && t.KasirID != userID {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
 	}
-	if role == "driver" {
-		// Check assignment via pengiriman (transaksi_id + driver_id must match)
-		list, _ := repository.GetPengirimanFiltered(bson.M{"transaksi_id": id, "driver_id": userID})
-		if len(list) == 0 {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
-		}
+	// FINAL RULE: selain admin/kasir tidak boleh akses transaksi
+	if role != "admin" && role != "kasir" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
 	}
 	return c.JSON(t)
 }
 
 // POST /transaksi (admin+kasir)
 func CreateTransaksi(c *fiber.Ctx) error {
-	var t models.Transaksi
-	if err := c.BodyParser(&t); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Data tidak valid"})
-	}
-	if t.KasirID == "" || t.PelangganID == "" || t.TotalHarga <= 0 {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "kasir_id, pelanggan_id, total_harga wajib"})
+	role, _ := c.Locals("userRole").(string)
+	userID, _ := c.Locals("userID").(string)
+	if role != "kasir" {
+		// Admin/gudang/driver ditolak untuk create transaksi
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
 	}
 
-	// Enrich item names if missing
-	if len(t.Items) > 0 {
-		for i := range t.Items {
-			if t.Items[i].NamaProduk == "" && t.Items[i].ProdukID != "" {
-				if p, err := repository.GetProdukByID(t.Items[i].ProdukID); err == nil && p != nil {
-					t.Items[i].NamaProduk = p.NamaProduk
-				}
-			}
-		}
+	var body struct {
+		PelangganID string `json:"pelanggan_id"`
+		Items       []struct {
+			ProdukID string `json:"produk_id"`
+			Jumlah   int    `json:"jumlah"`
+		} `json:"items"`
 	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Data tidak valid"})
+	}
+	if body.PelangganID == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "pelanggan_id wajib"})
+	}
+	if len(body.Items) == 0 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "items wajib"})
+	}
+
+	// Aggregate qty per produk untuk mencegah bypass stok via split items
+	aggQty := map[string]int{}
+	for _, it := range body.Items {
+		if it.ProdukID == "" {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "produk_id wajib"})
+		}
+		if it.Jumlah <= 0 {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "jumlah harus lebih dari 0"})
+		}
+		aggQty[it.ProdukID] += it.Jumlah
+	}
+
+	// Validasi stok di backend (qty <= stok) dan ambil harga produk dari DB
+	produkCache := map[string]*models.Produk{}
+	for produkID, qty := range aggQty {
+		saldo, err := repository.GetSaldoProduk(produkID)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"message": "Gagal membaca saldo"})
+		}
+		if qty > saldo.Saldo {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": fmt.Sprintf("Stok tidak mencukupi untuk produk %s", produkID)})
+		}
+		p, err := repository.GetProdukByID(produkID)
+		if err != nil || p == nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": fmt.Sprintf("Produk tidak ditemukan: %s", produkID)})
+		}
+		produkCache[produkID] = p
+	}
+
+	// Build transaksi: kasir_id dari JWT, harga dari DB, totals dihitung server-side
+	t := models.Transaksi{
+		KasirID:     userID,
+		PelangganID: body.PelangganID,
+		Status:      "proses",
+		Items:       []models.TransaksiItem{},
+	}
+
+	var totalProduk int
+	var totalHarga float64
+	for _, it := range body.Items {
+		p := produkCache[it.ProdukID]
+		harga := float64(0)
+		nama := ""
+		if p != nil {
+			harga = p.HargaJual
+			nama = p.NamaProduk
+		}
+		qty := it.Jumlah
+		item := models.TransaksiItem{
+			ProdukID:   it.ProdukID,
+			NamaProduk: nama,
+			Jumlah:     qty,
+			Harga:      harga,
+		}
+		t.Items = append(t.Items, item)
+		totalProduk += qty
+		totalHarga += harga * float64(qty)
+	}
+	t.TotalProduk = totalProduk
+	t.TotalHarga = totalHarga
 
 	id, err := repository.GenerateID("transaksi")
 	if err != nil {
@@ -117,11 +180,15 @@ func UpdateTransaksi(c *fiber.Ctx) error {
 	id := c.Params("id")
 	role, _ := c.Locals("userRole").(string)
 	userID, _ := c.Locals("userID").(string)
+	if role != "kasir" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
+	}
 	t, err := repository.GetTransaksiByID(id)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"message": "Transaksi tidak ditemukan"})
 	}
-	if role != "admin" && t.KasirID != userID {
+	if t.KasirID != userID {
+		// IMPORTANT: kasir tidak boleh update transaksi kasir lain
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
 	}
 	var body struct {
@@ -165,11 +232,15 @@ func DeleteTransaksi(c *fiber.Ctx) error {
 	id := c.Params("id")
 	role, _ := c.Locals("userRole").(string)
 	userID, _ := c.Locals("userID").(string)
+	if role != "kasir" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
+	}
 	t, err := repository.GetTransaksiByID(id)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"message": "Transaksi tidak ditemukan"})
 	}
-	if role != "admin" && t.KasirID != userID {
+	if t.KasirID != userID {
+		// IMPORTANT: kasir tidak boleh hapus transaksi kasir lain
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
 	}
 	if _, err := repository.DeleteTransaksi(id); err != nil {

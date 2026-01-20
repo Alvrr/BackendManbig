@@ -16,11 +16,11 @@ func PembayaranRoutes(app *fiber.App) {
 	// GET by ID - admin, kasir
 	pembayaran.Get("/:id", middleware.RoleGuard("admin", "kasir"), controllers.GetPembayaranByID)
 
-	// POST - hanya admin, kasir
-	pembayaran.Post("/", middleware.RoleGuard("admin", "kasir"), controllers.CreatePembayaran)
+	// POST - kasir saja (admin read-only)
+	pembayaran.Post("/", middleware.RoleGuard("kasir"), controllers.CreatePembayaran)
 
-	// PUT selesaikan - admin, kasir
-	pembayaran.Put("/selesaikan/:id", middleware.RoleGuard("admin", "kasir"), controllers.SelesaikanPembayaran)
+	// PUT selesaikan - kasir saja (admin read-only)
+	pembayaran.Put("/selesaikan/:id", middleware.RoleGuard("kasir"), controllers.SelesaikanPembayaran)
 
 	// Cetak surat jalan dihapus; dikelola oleh modul pengiriman
 }

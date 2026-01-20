@@ -3,6 +3,7 @@ package controllers
 import (
 	"backend/models"
 	"backend/repository"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -22,9 +23,13 @@ import (
 func GetAllPembayaran(c *fiber.Ctx) error {
 	role := c.Locals("userRole").(string)
 	id := c.Locals("userID").(string)
+	if role != "admin" && role != "kasir" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
+	}
 
 	filter := bson.M{}
 	if role != "admin" {
+		// IMPORTANT: kasir hanya boleh melihat pembayaran miliknya sendiri
 		filter["kasir_id"] = id
 	}
 
@@ -53,6 +58,9 @@ func GetPembayaranByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	role := c.Locals("userRole").(string)
 	userID := c.Locals("userID").(string)
+	if role != "admin" && role != "kasir" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
+	}
 
 	data, err := repository.GetPembayaranByID(id)
 	if err != nil {
@@ -85,19 +93,76 @@ func GetPembayaranByID(c *fiber.Ctx) error {
 //	@Failure		422			{object}	map[string]interface{}	"Validasi gagal"
 //	@Router			/pembayaran [post]
 func CreatePembayaran(c *fiber.Ctx) error {
-	var pembayaran models.Pembayaran
-	if err := c.BodyParser(&pembayaran); err != nil {
+	role := c.Locals("userRole").(string)
+	userID := c.Locals("userID").(string)
+	if role != "kasir" {
+		// Admin read-only; driver/gudang ditolak
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
+	}
+
+	var body struct {
+		TransaksiID    string `json:"transaksi_id"`
+		Metode         string `json:"metode"`
+		Delivery       bool   `json:"delivery"`
+		JenisKendaraan string `json:"jenis_kendaraan"`
+	}
+	if err := c.BodyParser(&body); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"message": "Request tidak valid",
 			"error":   err.Error(),
 		})
 	}
-	// Set kasir dari token
-	pembayaran.KasirID = c.Locals("userID").(string)
 
-	// Validasi minimal untuk skema baru
-	if pembayaran.TransaksiID == "" || pembayaran.TotalBayar <= 0 {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "transaksi_id dan total_bayar wajib"})
+	if body.TransaksiID == "" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "transaksi_id wajib"})
+	}
+	metode := strings.TrimSpace(body.Metode)
+	if metode == "" {
+		metode = "cash"
+	}
+
+	// Ownership check: transaksi harus milik kasir login
+	trx, err := repository.GetTransaksiByID(body.TransaksiID)
+	if err != nil || trx == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"message": "Transaksi tidak ditemukan"})
+	}
+	if trx.KasirID != userID {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
+	}
+
+	// Hitung total_toko dari transaksi (server-side)
+	totalToko := trx.TotalHarga
+	if totalToko <= 0 {
+		var sum float64
+		for _, it := range trx.Items {
+			sum += float64(it.Jumlah) * it.Harga
+		}
+		totalToko = sum
+	}
+
+	// Hitung ongkir dari kendaraan (server-side) jika delivery
+	ongkir := float64(0)
+	if body.Delivery {
+		jenis := strings.ToLower(strings.TrimSpace(body.JenisKendaraan))
+		if jenis == "" {
+			jenis = "mobil"
+		}
+		if jenis == "mobil" {
+			ongkir = 25000
+		} else if jenis == "motor" {
+			ongkir = 10000
+		} else {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"message": "jenis_kendaraan harus salah satu dari: mobil, motor"})
+		}
+	}
+
+	// Build pembayaran final (semua nilai finansial dihitung server)
+	pembayaran := models.Pembayaran{
+		TransaksiID: body.TransaksiID,
+		KasirID:     userID,
+		Metode:      metode,
+		TotalBayar:  totalToko + ongkir,
+		Status:      "pending",
 	}
 
 	id, err := repository.GenerateID("pembayaran")
@@ -109,9 +174,6 @@ func CreatePembayaran(c *fiber.Ctx) error {
 	}
 	pembayaran.ID = id
 	pembayaran.CreatedAt = time.Now()
-	if pembayaran.Status == "" {
-		pembayaran.Status = "pending"
-	}
 
 	result, err := repository.CreatePembayaran(pembayaran)
 	if err != nil {
@@ -144,6 +206,10 @@ func SelesaikanPembayaran(c *fiber.Ctx) error {
 	id := c.Params("id")
 	role := c.Locals("userRole").(string)
 	userID := c.Locals("userID").(string)
+	if role != "kasir" {
+		// Admin read-only; driver/gudang ditolak
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
+	}
 
 	pembayaran, err := repository.GetPembayaranByID(id)
 	if err != nil {
@@ -152,7 +218,7 @@ func SelesaikanPembayaran(c *fiber.Ctx) error {
 		})
 	}
 
-	if role != "admin" && pembayaran.KasirID != userID {
+	if pembayaran.KasirID != userID {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"message": "Akses ditolak"})
 	}
 
