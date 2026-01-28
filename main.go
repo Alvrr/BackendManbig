@@ -55,8 +55,12 @@ func main() {
 	// Load file .env (tidak fatal jika gagal, agar bisa jalan di Railway)
 	_ = godotenv.Load()
 
-	// Development-safe defaults if critical env vars are missing
+	// Ensure JWT_SECRET in production; allow safe default in development
+	appEnv := strings.ToLower(os.Getenv("APP_ENV"))
 	if os.Getenv("JWT_SECRET") == "" {
+		if appEnv == "production" {
+			log.Fatal("❌ JWT_SECRET harus diset di environment production")
+		}
 		os.Setenv("JWT_SECRET", "dev_secret_key_change_me")
 		log.Println("⚠️ JWT_SECRET tidak diset, menggunakan default untuk development")
 	}

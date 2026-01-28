@@ -35,8 +35,10 @@ func ConnectDB() {
 		dbName = "mbg"
 	}
 
-	fmt.Println("✅ MONGO_URI:", mongoURI)
-	fmt.Println("✅ DB_NAME:", dbName)
+	if os.Getenv("LOG_DB_CONFIG") == "true" {
+		fmt.Println("✅ MONGO_URI:", mongoURI)
+		fmt.Println("✅ DB_NAME:", dbName)
+	}
 
 	// Setup client MongoDB
 	clientOptions := options.Client().ApplyURI(mongoURI)
